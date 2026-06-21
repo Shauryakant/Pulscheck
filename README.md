@@ -1,18 +1,14 @@
-# BetterUptime
+# PulseCheck
 
-BetterUptime is a full stack uptime monitoring system built to scale. It lets users register websites, continuously checks their health, and shows real time status and latency in a clean dashboard.
+PulseCheck is a full stack uptime monitoring system built to scale. It lets users register websites, continuously checks their health, and shows real time status and latency in a clean, modern, dark-mode dashboard.
 
-This repo is a Bun powered monorepo using Turbo, with services for API, scheduling, workers, and a Next.js front end.
+This repo is a Node-powered monorepo using Turbo, with services for API, scheduling, workers, and a Next.js front end.
 
 ## What this solves
 
-Traditional monitoring apps often collapse when you add more checks or regions. BetterUptime is designed around a queue and worker model, so it can scale horizontally without slowing the API or the dashboard.
+Traditional monitoring apps often collapse when you add more checks or regions. PulseCheck is designed around a queue and worker model, so it can scale horizontally without slowing the API or the dashboard.
 
-<img width="1760" height="1064" alt="Screenshot 2026-04-26 001223" src="https://github.com/user-attachments/assets/933621d2-7640-44b1-96ea-c6191028b2c0" />
-
-<img width="2559" height="1421" alt="Screenshot 2026-04-26 210824" src="https://github.com/user-attachments/assets/8224e5a6-4dfd-4a2c-aff5-92cb783ccba8" />
-
-<img width="2559" height="1415" alt="Screenshot 2026-04-26 210803" src="https://github.com/user-attachments/assets/fa269687-eca2-4884-9a92-68b0f7dc563e" />
+*(Add your new PulseCheck screenshots here!)*
 
 ## Key features
 
@@ -43,7 +39,7 @@ User -> Frontend -> API -> Postgres
 Apps:
 
 - api: Express API for auth, websites, and status queries
-- fe/my-app: Next.js front end
+- web: Next.js front end
 - pusher: scheduler that pushes websites into the queue
 - worker: workers that consume queue tasks and run checks
 
@@ -64,7 +60,7 @@ Packages:
 ## Queue and worker flow
 
 1. The scheduler reads all websites from Postgres.
-2. It pushes each URL to the Redis stream (betteruptime:website).
+2. It pushes each URL to the Redis stream (pulsecheck:website).
 3. Workers read from a Redis Streams consumer group.
 4. Each worker checks the URL and writes a WebsiteTicks row.
 5. The worker acknowledges the task only after it is processed.
@@ -83,7 +79,6 @@ This acknowledgement step is critical for reliability. If a worker crashes, unac
 
 ### Requirements
 
-- Bun 1.3.1 (recommended, repo uses Bun workspaces)
 - Node 18+ for tooling compatibility
 - Postgres database
 - Redis server
@@ -91,7 +86,7 @@ This acknowledgement step is critical for reliability. If a worker crashes, unac
 ### Install
 
 ```sh
-bun install
+npm install
 ```
 
 ### Environment variables
@@ -120,7 +115,7 @@ REGION_ID=us-east-1
 WORKER_ID=worker-1
 ```
 
-Frontend (apps/fe/my-app):
+Frontend (apps/web):
 
 ```
 NEXT_PUBLIC_API_BASE=http://localhost:3000
@@ -134,7 +129,7 @@ Prisma migrations live in packages/db/prisma/migrations. After setting DATABASE_
 
 ```sh
 cd packages/db
-bunx prisma migrate dev
+npx prisma migrate dev
 ```
 
 You also need Region records for any REGION_ID values your workers use. Insert them in Postgres before starting workers.
@@ -144,40 +139,18 @@ You also need Region records for any REGION_ID values your workers use. Insert t
 Create a consumer group per region (group name must match REGION_ID):
 
 ```sh
-redis-cli XGROUP CREATE betteruptime:website us-east-1 $ MKSTREAM
+redis-cli XGROUP CREATE pulsecheck:website us-east-1 $ MKSTREAM
 ```
 
 ### Run locally
 
-Start the API:
+From the repo root:
 
 ```sh
-cd apps/api
-bun run dev
+npm run dev
 ```
 
-Start the scheduler:
-
-```sh
-cd apps/pusher
-bun run index.ts
-```
-
-Start a worker:
-
-```sh
-cd apps/worker
-bun run index.ts
-```
-
-Start the front end:
-
-```sh
-cd apps/fe/my-app
-bun run dev
-```
-
-Note: the API and Next.js default to port 3000. Run one of them on a different port (use PORT for the API or -p for Next) and set NEXT_PUBLIC_API_BASE accordingly.
+This will spin up all services concurrently using Turborepo.
 
 ## API endpoints
 
@@ -195,42 +168,8 @@ All protected endpoints require Authorization: Bearer <token>.
 - Add websites in the dashboard
 - View status ticks and latency history per website
 
-## Project structure
-
-```
-apps/
-	api/
-	fe/my-app/
-	pusher/
-	worker/
-packages/
-	db/
-	redis-streams/
-	eslint-config/
-	typescript-config/
-```
-
-## Common scripts
-
-From the repo root:
-
-```sh
-bun run dev
-bun run build
-bun run lint
-```
-
-Use Turbo filters to target a single app when needed.
-
 ## Reliability notes
 
 - Worker acknowledgement ensures tasks are only marked done after successful processing.
 - Redis Streams keeps pending tasks for retry when a worker fails.
 - Region awareness makes multi region monitoring straightforward.
-
-## Roadmap ideas
-
-- Alerts and notifications
-- SLA and reporting dashboards
-- Configurable check intervals
-- Multi user teams and roles
