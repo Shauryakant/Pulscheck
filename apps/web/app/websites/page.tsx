@@ -90,12 +90,13 @@ export default function WebsitesPage() {
   };
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      fetchWebsites();
-    }, 0);
+    fetchWebsites(); // Initial fetch
+    const intervalId = window.setInterval(() => {
+      fetchWebsites(); // Poll every 5 seconds
+    }, 5000);
 
     return () => {
-      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
     };
   }, []);
 

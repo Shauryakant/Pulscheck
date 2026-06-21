@@ -81,12 +81,13 @@ export default function WebsiteDetailPage() {
   };
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      fetchStatus();
-    }, 0);
+    fetchStatus(); // Initial fetch
+    const intervalId = window.setInterval(() => {
+      fetchStatus(); // Poll every 5 seconds
+    }, 5000);
 
     return () => {
-      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
     };
   }, [websiteId]);
 
