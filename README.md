@@ -7,8 +7,10 @@ This repo is a Node-powered monorepo using Turbo, with services for API, schedul
 ## What this solves
 
 Traditional monitoring apps often collapse when you add more checks or regions. PulseCheck is designed around a queue and worker model, so it can scale horizontally without slowing the API or the dashboard.
+<img width="1919" height="841" alt="Screenshot 2026-06-22 005727" src="https://github.com/user-attachments/assets/fa99fb55-a257-4435-bb9a-b8cb523d2ff5" />
 
-*(Add your new PulseCheck screenshots here!)*
+<img width="1919" height="841" alt="Screenshot 2026-06-22 005727" src="https://github.com/user-attachments/assets/08c6f7ba-90e8-4197-94e3-1ec45c4aa094" />
+
 
 ## Key features
 
