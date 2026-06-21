@@ -1,0 +1,19 @@
+{
+  "name": "worker",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "scripts": { "dev": "tsx index.ts", "build": "echo 'built'" }, "dependencies": {
+    "@repo/db": "*",
+    "@repo/redis": "*",
+    "axios": "^1.15.2",
+    "dotenv": "^17.4.2",
+    "redis": "^5.12.1"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@repo/db",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./client": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "npm run build"
+  },
+  "devDependencies": {
+    
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.7.0",
+    "@types/dotenv": "^8.2.3",
+    "@types/node": "^25.6.0",
+    "dotenv": "^17.4.2",
+    "prisma": "^7.7.0"
+  }
+}

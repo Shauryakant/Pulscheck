@@ -1,0 +1,16 @@
+{
+  "name": "pusher",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": { "dev": "tsx index.ts", "build": "echo 'built'" }, "dependencies": {
+    "@repo/db": "*",
+    "@repo/redis": "*"
+  },
+  "devDependencies": {
+    
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
