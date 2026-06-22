@@ -3,7 +3,12 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
-  "scripts": { "dev": "tsx index.ts", "build": "echo 'built'" }, "dependencies": {
+  "scripts": {
+    "start": "npx tsx index.ts",
+    "dev": "npx tsx index.ts",
+    "build": "echo 'built'"
+  },
+  "dependencies": {
     "@repo/db": "*",
     "@repo/redis": "*"
   },

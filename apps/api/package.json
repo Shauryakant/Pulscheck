@@ -4,8 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "tsx src/index.ts",
-    "dev": "tsx src/index.ts"
+    "build": "echo 'built'",
+    "start": "npx tsx src/index.ts",
+    "dev": "npx tsx src/index.ts"
   },
   "peerDependencies": {
     "typescript": "^5"
