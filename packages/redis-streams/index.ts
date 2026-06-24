@@ -39,7 +39,12 @@ export async function xAddBulk(websites: WebsiteEvent[]){
 }
 
 export async function xReadGroup(consumerGroup: string, workerId: string): Promise<MessageType[] | undefined>{
-    
+    try {
+        await client.xGroupCreate(STREAM_NAME, consumerGroup, '0', { MKSTREAM: true });
+    } catch (e: any) {
+        // Ignore BUSYGROUP error (group already exists)
+    }
+
     const res = await client.xReadGroup(
         consumerGroup, workerId, {
             key: STREAM_NAME,
