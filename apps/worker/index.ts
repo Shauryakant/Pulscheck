@@ -22,6 +22,8 @@ async function main(){
         const res = await xReadGroup(REGION_ID,WORKER_ID);
 
         if(!res){
+            // Sleep for 5 seconds before checking again to save Redis commands
+            await new Promise(r => setTimeout(r, 5000));
             continue;
         }
 
