@@ -7,68 +7,79 @@ dotenv.config();
 const REGION_ID = process.env.REGION_ID;
 const WORKER_ID = process.env.WORKER_ID;
 
+const REQUEST_TIMEOUT_MS = 10_000;
+const IDLE_SLEEP_MS = 5_000;
 
-async function main(){
-    
-    if(!REGION_ID){
-        return;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+async function main() {
+  if (!REGION_ID || !WORKER_ID) {
+    console.error("REGION_ID and WORKER_ID must be set");
+    return;
+  }
+  console.log(`Worker ${WORKER_ID} started in region ${REGION_ID}`);
+
+  while (true) {
+    try {
+      // read from the stream
+      const res = await xReadGroup(REGION_ID, WORKER_ID);
+
+      if (!res || res.length === 0) {
+        // sleep before checking again to save Redis commands
+        await sleep(IDLE_SLEEP_MS);
+        continue;
+      }
+
+      // run all checks; allSettled so one failure doesn't reject the batch
+      const results = await Promise.allSettled(
+        res.map(({ message }) => fetchWebsite(message.url, message.id))
+      );
+
+      // ack only the messages that were fully processed (check + DB write).
+      // failed ones stay pending so they can be claimed and retried later.
+      const ackIds = res
+        .filter((_, i) => results[i].status === "fulfilled")
+        .map(({ id }) => id);
+
+      if (ackIds.length > 0) {
+        await xAckBulk(REGION_ID, ackIds);
+      }
+
+      const failed = results.length - ackIds.length;
+      console.log(`Processed ${ackIds.length}, failed ${failed}`);
+
+      // TODO: XAUTOCLAIM to reassign stale pending messages to the consumer group
+    } catch (err) {
+      // e.g. Redis connection issue; don't crash the worker
+      console.error("Worker loop error:", err);
+      await sleep(IDLE_SLEEP_MS);
     }
-    console.log(REGION_ID);
-    if(!WORKER_ID){
-        return;
-    }
-    //read from the stream
-    while(1){
-        const res = await xReadGroup(REGION_ID,WORKER_ID);
-
-        if(!res){
-            // Sleep for 5 seconds before checking again to save Redis commands
-            await new Promise(r => setTimeout(r, 5000));
-            continue;
-        }
-
-        let promises = res.map(({message}) => fetchWebsite(message.url,message.id));
-        await Promise.all(promises);
-        console.log(promises.length);
-        //process the website and store the result in the DB 
-        //bulk insert through queue maybe
-        
-        //ack back to the queue that this event has been processed
-        xAckBulk(REGION_ID, res.map(({id})=> id));
-
-        //XAUTOCLAIM to assign pending stale messages to consumer group again
-    }
+  }
 }
 
-async function fetchWebsite(url: string,websiteId: string):Promise<void>{
-    return new Promise<void>((resolve,reject)=> {
-            const startTime = Date.now();
-            axios.get(url)
-                .then(async ()=> {
-                    const endTime = Date.now();
-                    await client.websiteTicks.create({
-                        data: {
-                            response_time_ms: endTime-startTime,
-                            status: "Up",
-                            region_id: REGION_ID!,
-                            website_id: websiteId
-                        }
-                    })
-                    resolve();
-                })
-                .catch(async()=> {
-                    const endTime = Date.now();
-                    await client.websiteTicks.create({
-                        data: {
-                            response_time_ms: endTime-startTime,
-                            status: "Down",
-                            region_id: REGION_ID!,
-                            website_id: websiteId
-                        }
-                    })
-                    resolve();
-                })
-        })
+async function fetchWebsite(url: string, websiteId: string): Promise<void> {
+  const startTime = Date.now();
+  let status: "Up" | "Down" = "Up";
+
+  // only the HTTP request decides Up/Down
+  try {
+    await axios.get(url, { timeout: REQUEST_TIMEOUT_MS });
+  } catch {
+    status = "Down";
+  }
+
+  const responseTimeMs = Date.now() - startTime;
+
+  // DB write is outside the try/catch: if it fails, this function rejects,
+  // the message is not acked, and it can be retried
+  await client.websiteTicks.create({
+    data: {
+      response_time_ms: responseTimeMs,
+      status,
+      region_id: REGION_ID!,
+      website_id: websiteId,
+    },
+  });
 }
 
 main();
