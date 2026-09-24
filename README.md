@@ -1,178 +1,214 @@
-# PulseCheck
+# PulseCheck ⚡
 
-PulseCheck is a full stack uptime monitoring system built to scale. It lets users register websites, continuously checks their health, and shows real time status and latency in a clean, modern, dark-mode dashboard.
+PulseCheck is a high-performance, region-aware distributed uptime monitoring platform engineered to scale. Built as a Node.js monorepo powered by **Turborepo**, PulseCheck decouples website scheduling, execution, and health tracking using a asynchronous message queue model powered by **Redis Streams** and **PostgreSQL**.
 
-This repo is a Node-powered monorepo using Turbo, with services for API, scheduling, workers, and a Next.js front end.
+---
 
-## What this solves
+## 🚀 Why PulseCheck?
 
-Traditional monitoring apps often collapse when you add more checks or regions. PulseCheck is designed around a queue and worker model, so it can scale horizontally without slowing the API or the dashboard.
-<img width="1919" height="818" alt="Screenshot 2026-06-22 005744" src="https://github.com/user-attachments/assets/c8dd9227-436c-41de-8ac9-725ffc613196" />
+Traditional uptime monitoring applications often collapse under load when scaling check frequencies or adding new geographic regions. Synchronous monitoring architectures block HTTP requests, bottleneck databases, and fail silently when workers crash.
 
+**PulseCheck solves this through:**
+- **Decoupled Queueing**: Health check requests are pushed to a high-throughput Redis Stream (`betteruptime:website`) without blocking API operations.
+- **Region-Aware Workers**: Worker nodes operate across distinct geographical regions, reading from consumer groups and recording region-specific latency metrics.
+- **At-Least-Once Delivery & ACK Mechanics**: Tasks are acknowledged (`xAckBulk`) only after successful HTTP check and database persistence. Unacknowledged or orphaned tasks from crashed workers are automatically reclaimed via `xAutoClaimStale`.
+- **Single-Service Cloud Deployment**: Built to run all backend workers concurrently (`api`, `pusher`, and `worker`) under a single free Render Web Service tier.
 
-<img width="1919" height="841" alt="Screenshot 2026-06-22 005727" src="https://github.com/user-attachments/assets/08c6f7ba-90e8-4197-94e3-1ec45c4aa094" />
+---
 
+## 🏗️ Architecture Overview
 
-## Key features
+```mermaid
+flowchart TD
+    subgraph Client & Frontend
+        U[User] -->|HTTPS| Web[Next.js 16 Dashboard]
+    end
 
-- JWT authentication for secure access
-- Add websites and view status history
-- Latency tracking in milliseconds
-- Region aware health checks
-- Redis Streams queue for scale and back pressure
-- Acknowledgement based processing to avoid lost tasks
+    subgraph API Layer
+        Web -->|REST API / Bearer Token| API[Express API Server]
+        API -->|Read / Write| DB[(Neon PostgreSQL)]
+    end
 
-## Architecture at a glance
+    subgraph Queue & Processing Engine
+        Pusher[Pusher Scheduler Loop] -->|Read Websites| DB
+        Pusher -->|xAddBulk / Pipeline Multi| Redis[(Upstash Redis Stream: betteruptime:website)]
+        
+        Redis -->|xReadGroup / xAutoClaimStale| Worker[Regional Worker Nodes]
+        Worker -->|HTTP Ping| Target[Target Website / API]
+        Worker -->|Persist WebsiteTicks| DB
+        Worker -->|xAckBulk| Redis
+    end
+```
+
+---
+
+## 📁 Repository Structure
+
+PulseCheck is organized as a Turborepo monorepo:
 
 ```
-User -> Frontend -> API -> Postgres
-										|
-										v
-							 Scheduler (Pusher)
-										|
-										v
-							 Redis Streams Queue
-										|
-										v
-								 Workers -> Postgres
+uptime-monitor/
+├── apps/
+│   ├── api/          # Express.js REST API (Auth, Websites, Status)
+│   ├── pusher/       # Scheduler daemon (Queries DB & feeds Redis stream)
+│   ├── web/          # Next.js 16 modern dark-mode frontend dashboard
+│   └── worker/       # Queue worker daemon (Fetches URLs, checks health, writes ticks)
+├── packages/
+│   ├── db/           # Prisma client, PostgreSQL schema, and migrations
+│   ├── redis-streams/# Shared Redis stream producer/consumer helpers (@repo/redis)
+│   ├── eslint-config/# Shared ESLint configurations
+│   └── typescript-config/# Shared TypeScript tsconfig templates
+├── .env.example      # Master environment variable template
+├── package.json      # Root package config & workspace start:all script
+└── turbo.json        # Turborepo task pipeline configuration
 ```
 
-## Services and packages
+---
 
-Apps:
+## 📊 Database Data Model
 
-- api: Express API for auth, websites, and status queries
-- web: Next.js front end
-- pusher: scheduler that pushes websites into the queue
-- worker: workers that consume queue tasks and run checks
+```mermaid
+erDiagram
+    User ||--o{ Website : owns
+    Website ||--o{ WebsiteTicks : has
+    Region ||--o{ WebsiteTicks : records
 
-Packages:
+    User {
+        string id PK
+        string username UK
+        string password
+    }
 
-- @repo/db: Prisma client and database adapter
-- @repo/redis: Redis Streams client helpers
-- @repo/eslint-config, @repo/typescript-config: shared tooling
+    Website {
+        string id PK
+        string url
+        string user_id FK
+        datetime timeAdded
+    }
 
-## Data model
+    Region {
+        string id PK
+        string name
+    }
 
-- User: authentication identity
-- Website: URL and owner
-- Region: logical region for checks
-- WebsiteTicks: one record per check
-- WebsiteStatus enum: Up, Down, Unknown
+    WebsiteTicks {
+        string id PK
+        int response_time_ms
+        enum status "Up | Down | Unknown"
+        string region_id FK
+        string website_id FK
+        datetime createdAt
+    }
+```
 
-## Queue and worker flow
+---
 
-1. The scheduler reads all websites from Postgres.
-2. It pushes each URL to the Redis stream (pulsecheck:website).
-3. Workers read from a Redis Streams consumer group.
-4. Each worker checks the URL and writes a WebsiteTicks row.
-5. The worker acknowledges the task only after it is processed.
+## 🔑 Environment Variables
 
-This acknowledgement step is critical for reliability. If a worker crashes, unacked tasks remain pending and can be claimed again.
+Copy `.env.example` to create `.env` in the root or individual app directories:
 
-## Scalability and reliability
+| Variable | Description | Services Using It | Example / Value |
+| :--- | :--- | :--- | :--- |
+| `DATABASE_URL` | PostgreSQL connection URL (Neon / Supabase) | `api`, `pusher`, `worker`, `packages/db` | `postgresql://user:pass@ep-xyz.neon.tech/db?sslmode=require` |
+| `REDIS_URL` | Redis connection URL (Upstash / Local) | `pusher`, `worker`, `packages/redis-streams` | `rediss://default:pass@united-kiwi.upstash.io:6379` |
+| `JWT_SECRET` | Secret key for signing user auth tokens | `api` | `your-secret-key-123` |
+| `REGION_ID` | Region identifier (must exist in `Region` DB table) | `worker` | `us-east-1` |
+| `WORKER_ID` | Unique worker instance identifier | `worker` | `worker-1` |
+| `PORT` | HTTP server port for Express API | `api` | `3000` |
+| `NEXT_PUBLIC_API_BASE` | Base URL of deployed Express API | `web` | `http://localhost:3000` |
 
-- Decoupled API: user traffic never blocks on health checks
-- Back pressure: Redis streams buffer spikes in traffic
-- Horizontal scaling: add workers without changing the API
-- Region scalability: run workers in multiple regions
-- Task acknowledgement: checks are only marked complete after success
+---
 
-## Getting started
+## 🛠️ Local Development
 
-### Requirements
+### 1. Requirements
+- **Node.js**: `>= 18.0.0`
+- **PostgreSQL**: Neon, Supabase, or local instance
+- **Redis**: Upstash Redis (`rediss://`) or local Redis server (`>= 6.2` with Streams support)
 
-- Node 18+ for tooling compatibility
-- Postgres database
-- Redis server
-
-### Install
-
-```sh
+### 2. Installation
+```bash
+git clone https://github.com/Shauryakant/Pulscheck.git
+cd Pulscheck
 npm install
 ```
 
-### Environment variables
-
-Create a .env file in each service folder or export variables when running.
-
-API (apps/api):
-
-```
-DATABASE_URL=postgres://user:password@localhost:5432/postgres
-JWT_SECRET=change-me
-PORT=3000
-```
-
-Pusher (apps/pusher):
-
-```
-DATABASE_URL=postgres://user:password@localhost:5432/postgres
-```
-
-Worker (apps/worker):
-
-```
-DATABASE_URL=postgres://user:password@localhost:5432/postgres
-REGION_ID=us-east-1
-WORKER_ID=worker-1
-```
-
-Frontend (apps/web):
-
-```
-NEXT_PUBLIC_API_BASE=http://localhost:3000
-```
-
-Redis is expected at the default connection settings. If you need a custom URL, update the Redis client in packages/redis-streams.
-
-### Database setup
-
-Prisma migrations live in packages/db/prisma/migrations. After setting DATABASE_URL:
-
-```sh
+### 3. Database Setup & Seeding
+```bash
+# Set DATABASE_URL in packages/db/.env or terminal
 cd packages/db
 npx prisma migrate dev
+npx tsx seed.ts   # Seeds initial us-east-1 Region record
 ```
 
-You also need Region records for any REGION_ID values your workers use. Insert them in Postgres before starting workers.
-
-### Redis setup
-
-Create a consumer group per region (group name must match REGION_ID):
-
-```sh
-redis-cli XGROUP CREATE pulsecheck:website us-east-1 $ MKSTREAM
-```
-
-### Run locally
-
+### 4. Running All Services Concurrently
 From the repo root:
-
-```sh
+```bash
+# Runs api, web, pusher, and worker simultaneously via Turborepo
 npm run dev
 ```
 
-This will spin up all services concurrently using Turborepo.
+The services will be live at:
+- **Frontend Dashboard**: `http://localhost:3001`
+- **Express REST API**: `http://localhost:3000`
+- **API Health Check**: `http://localhost:3000/health`
 
-## API endpoints
+---
 
-All protected endpoints require Authorization: Bearer <token>.
+## ☁️ Deployment Guide
 
-- POST /api/v1/signup
-- POST /api/v1/signin
-- POST /api/v1/website
-- GET /api/v1/websites
-- GET /api/v1/status/:websiteId
+PulseCheck is optimized for cost-effective deployment: the backend services (`api`, `pusher`, `worker`) run together on **Render**, while the Next.js frontend is deployed on **Vercel**.
 
-## Front end flow
+### Deploying Backend to Render (Single Web Service)
 
-- Sign in or sign up to get a JWT token stored in localStorage
-- Add websites in the dashboard
-- View status ticks and latency history per website
+1. Create a new **Web Service** on Render connected to your repository.
+2. Select **Node** environment and configure:
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm run start:all`
+   - **Health Check Path**: `/health`
+3. Add Environment Variables:
+   - `DATABASE_URL` (Neon PostgreSQL URL with `?sslmode=require`)
+   - `REDIS_URL` (Upstash Redis `rediss://...`)
+   - `JWT_SECRET`
+   - `REGION_ID` = `us-east-1`
+   - `WORKER_ID` = `worker-1`
+   - `PORT` (Provided automatically by Render)
 
-## Reliability notes
+> **Note on Render Free Tier**: Setting the Health Check Path to `/health` ensures Render's health monitor regularly pings `/health` (returning HTTP `200 ok`), keeping the free web service active.
 
-- Worker acknowledgement ensures tasks are only marked done after successful processing.
-- Redis Streams keeps pending tasks for retry when a worker fails.
-- Region awareness makes multi region monitoring straightforward.
+### Deploying Frontend to Vercel
+
+1. Import the repository into **Vercel**.
+2. Set the **Root Directory** to `apps/web`.
+3. Add Environment Variable:
+   - `NEXT_PUBLIC_API_BASE` = `https://your-render-service.onrender.com`
+
+---
+
+## 🌐 API Reference
+
+### Health Check
+- `GET /health` -> Returns `200 ok`
+
+### Authentication
+- `POST /api/v1/signup` -> Register new user (`{ username, password }`)
+- `POST /api/v1/signin` -> Authenticate user (`{ username, password }`) -> Returns `{ userId, token }`
+
+### Website Monitoring (Protected - `Authorization: Bearer <token>`)
+- `POST /api/v1/website` -> Add website to monitor (`{ url }`)
+- `GET /api/v1/websites` -> Get all monitored websites with latest latency tick & status
+- `GET /api/v1/status/:websiteId` -> Get last 10 historical ticks for a specific website
+
+---
+
+## 🛡️ Reliability & Fault Tolerance
+
+1. **Consumer Group Auto-Creation**: `ensureGroup(REGION_ID)` creates stream consumer groups automatically at startup, eliminating manual setup commands.
+2. **Stream Trimming**: Every batch push (`xAddBulk`) trims the stream using `MAXLEN ~ 10000` to prevent memory blowup in Redis.
+3. **Graceful Retries**: Failed HTTP checks log status as `Down` and write a tick. If database writes fail, the message remains unacknowledged and is retried via `xAutoClaimStale`.
+
+---
+
+## 📄 License
+
+Distributed under the MIT License.

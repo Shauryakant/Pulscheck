@@ -12,9 +12,15 @@ app.use(
 );
 app.use(express.json());
 
+app.get('/health', (req, res) => {
+    res.status(200).send('ok');
+});
+
 app.use('/api/v1',router);
 app.use('/api/v1',websiteRouter);
 
-app.listen(process.env.PORT || 3000,() => {
-    console.log('starting at 3000');
+const port = process.env.PORT || 3000;
+
+app.listen(port, () => {
+    console.log(`starting at ${port}`);
 });

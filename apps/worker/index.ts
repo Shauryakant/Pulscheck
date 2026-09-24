@@ -20,7 +20,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 async function main() {
     if (!REGION_ID || !WORKER_ID) {
         console.error("REGION_ID and WORKER_ID must be set");
-        return;
+        process.exit(1);
     }
     console.log(`Worker ${WORKER_ID} started in region ${REGION_ID}`);
 
