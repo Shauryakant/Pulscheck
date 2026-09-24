@@ -31,7 +31,7 @@ flowchart TD
 
     subgraph Queue & Processing Engine
         Pusher[Pusher Scheduler Loop] -->|Read Websites| DB
-        Pusher -->|xAddBulk / Pipeline Multi| Redis[(Upstash Redis Stream: betteruptime:website)]
+        Pusher -->|xAddBulk / Pipeline Multi| Redis[(Upstash Redis Stream: pulsecheck:website)]
         
         Redis -->|xReadGroup / xAutoClaimStale| Worker[Regional Worker Nodes]
         Worker -->|HTTP Ping| Target[Target Website / API]
